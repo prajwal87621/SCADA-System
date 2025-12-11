@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 Motor Control</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 500px;
+      width: 100%;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .status-badge {
+      text-align: center;
+      padding: 8px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    .status-badge.connected {
+      background: #d4edda;
+      color: #155724;
+      border: 2px solid #c3e6cb;
+    }
+    .status-badge.disconnected {
+      background: #f8d7da;
+      color: #721c24;
+      border: 2px solid #f5c6cb;
+    }
+    .status-badge.loading {
+      background: #fff3cd;
+      color: #856404;
+      border: 2px solid #ffc107;
+    }
+    
+    .motor-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .motor-card {
+      background: #f8f9fa;
+      border-radius: 15px;
+      padding: 25px;
+      text-align: center;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      border: 3px solid transparent;
+    }
+    .motor-card:hover:not(.disabled) {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    }
+    .motor-card.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-color: #667eea;
+    }
+    .motor-card.active h2,
+    .motor-card.active .status {
+      color: white;
+    }
+    .motor-card.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .motor-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+    h2 {
+      color: #333;
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+    .status {
+      font-size: 14px;
+      font-weight: bold;
+      padding: 5px 15px;
+      border-radius: 20px;
+      display: inline-block;
+      margin-top: 5px;
+    }
+    .status.off {
+      background: #e0e0e0;
+      color: #666;
+    }
+    .status.on {
+      background: rgba(255,255,255,0.3);
+      color: white;
+    }
+    .power-info {
+      background: #f8f9fa;
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .power-info h3 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+    .power-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .power-row:last-child {
+      border-bottom: none;
+    }
+    .power-label {
+      color: #666;
+      font-size: 14px;
+    }
+    .power-value {
+      color: #333;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .footer {
+      text-align: center;
+      color: #999;
+      font-size: 12px;
+      margin-top: 15px;
+    }
+    .last-update {
+      text-align: center;
+      color: #999;
+      font-size: 11px;
+      margin-top: 10px;
+    }
+    @media (max-width: 480px) {
+      .motor-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚙️ Motor Control</h1>
+    <p class="subtitle">Control from Anywhere 🌍</p>
+    
+    <!-- Connection Status -->
+    <div class="status-badge loading" id="connectionStatus">
+      🔄 Connecting to Backend...
+    </div>
+    
+    <div class="motor-grid">
+      <div class="motor-card disabled" id="motorA" onclick="toggleMotor('A')">
+        <div class="motor-icon">🔧</div>
+        <h2>Motor A</h2>
+        <span class="status off" id="statusA">OFF</span>
+      </div>
+      
+      <div class="motor-card disabled" id="motorB" onclick="toggleMotor('B')">
+        <div class="motor-icon">⚙️</div>
+        <h2>Motor B</h2>
+        <span class="status off" id="statusB">OFF</span>
+      </div>
+    </div>
+    
+    <div class="power-info">
+      <h3>📊 Power Monitoring</h3>
+      <div class="power-row">
+        <span class="power-label">Voltage:</span>
+        <span class="power-value" id="voltage">-- V</span>
+      </div>
+      <div class="power-row">
+        <span class="power-label">Current:</span>
+        <span class="power-value" id="current">-- mA</span>
+      </div>
+      <div class="power-row">
+        <span class="power-label">Power:</span>
+        <span class="power-value" id="power">-- W</span>
+      </div>
+    </div>
+    
+    <div class="last-update" id="lastUpdate">
+      Last updated: Never
+    </div>
+    
+    <div class="footer">
+      ESP32 Motor Control System v2.0 - Cloud Connected
+    </div>
+  </div>
+
+  <script>
+    // ⚠️ CHANGE THIS to your Render backend URL
+    const BACKEND_URL = 'https://your-app-name.onrender.com';
+    
+    let isConnected = false;
+    let updateInterval = null;
+    
+    // Start on page load
+    window.onload = function() {
+      console.log('Starting Motor Control Interface...');
+      testConnection();
+    };
+    
+    function testConnection() {
+      console.log('Testing connection to:', BACKEND_URL);
+      
+      fetch(`${BACKEND_URL}/health`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('✓ Backend connected:', data);
+          isConnected = true;
+          updateConnectionStatus(true);
+          updateStatus();
+          startAutoUpdate();
+        })
+        .catch(error => {
+          console.error('✗ Connection failed:', error);
+          isConnected = false;
+          updateConnectionStatus(false);
+          // Retry after 5 seconds
+          setTimeout(testConnection, 5000);
+        });
+    }
+    
+    function updateConnectionStatus(connected) {
+      const statusBadge = document.getElementById('connectionStatus');
+      const motorA = document.getElementById('motorA');
+      const motorB = document.getElementById('motorB');
+      
+      if (connected) {
+        statusBadge.className = 'status-badge connected';
+        statusBadge.textContent = '✅ Connected - Ready to Control';
+        motorA.classList.remove('disabled');
+        motorB.classList.remove('disabled');
+      } else {
+        statusBadge.className = 'status-badge disconnected';
+        statusBadge.textContent = '⚠️ Backend Disconnected - Retrying...';
+        motorA.classList.add('disabled');
+        motorB.classList.add('disabled');
+      }
+    }
+    
+    function toggleMotor(motor) {
+      if (!isConnected) {
+        alert('Backend not connected. Please wait...');
+        return;
+      }
+      
+      console.log(`Toggling Motor ${motor}...`);
+      
+      fetch(`${BACKEND_URL}/api/motor/${motor}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('✓ Command sent:', data);
+          // Update status immediately
+          setTimeout(updateStatus, 500);
+        })
+        .catch(error => {
+          console.error('✗ Error sending command:', error);
+          isConnected = false;
+          updateConnectionStatus(false);
+          stopAutoUpdate();
+          testConnection();
+        });
+    }
+    
+    function updateStatus() {
+      if (!isConnected) return;
+      
+      fetch(`${BACKEND_URL}/api/status`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          updateUI(data);
+        })
+        .catch(error => {
+          console.error('✗ Error fetching status:', error);
+          isConnected = false;
+          updateConnectionStatus(false);
+          stopAutoUpdate();
+          testConnection();
+        });
+    }
+    
+    function updateUI(data) {
+      // Update Motor A
+      const motorACard = document.getElementById('motorA');
+      const statusA = document.getElementById('statusA');
+      if (data.motorA) {
+        motorACard.classList.add('active');
+        statusA.textContent = 'ON';
+        statusA.className = 'status on';
+      } else {
+        motorACard.classList.remove('active');
+        statusA.textContent = 'OFF';
+        statusA.className = 'status off';
+      }
+      
+      // Update Motor B
+      const motorBCard = document.getElementById('motorB');
+      const statusB = document.getElementById('statusB');
+      if (data.motorB) {
+        motorBCard.classList.add('active');
+        statusB.textContent = 'ON';
+        statusB.className = 'status on';
+      } else {
+        motorBCard.classList.remove('active');
+        statusB.textContent = 'OFF';
+        statusB.className = 'status off';
+      }
+      
+      // Update power info
+      document.getElementById('voltage').textContent = data.voltage.toFixed(2) + ' V';
+      document.getElementById('current').textContent = data.current.toFixed(2) + ' mA';
+      document.getElementById('power').textContent = data.power.toFixed(4) + ' W';
+      
+      // Update last update time
+      if (data.lastUpdated) {
+        const lastUpdate = new Date(data.lastUpdated);
+        const now = new Date();
+        const diff = Math.floor((now - lastUpdate) / 1000);
+        document.getElementById('lastUpdate').textContent = 
+          `Last updated: ${diff} seconds ago`;
+      }
+    }
+    
+    function startAutoUpdate() {
+      if (updateInterval) clearInterval(updateInterval);
+      updateInterval = setInterval(updateStatus, 2000); // Update every 2 seconds
+      console.log('✓ Auto-update started');
+    }
+    
+    function stopAutoUpdate() {
+      if (updateInterval) {
+        clearInterval(updateInterval);
+        updateInterval = null;
+        console.log('✗ Auto-update stopped');
+      }
+    }
+  </script>
+</body>
+</html>
